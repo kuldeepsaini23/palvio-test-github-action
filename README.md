@@ -1,5 +1,7 @@
 # Palvio
 
+Hello — sync test.
+
 A modern React application built with Vite, TypeScript, and cutting-edge web technologies.
 
 ## 📋 Table of Contents
