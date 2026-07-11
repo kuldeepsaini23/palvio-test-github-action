@@ -1,14 +1,9 @@
 name: Sync Client Repository
 
-# Run manually from the Actions tab.
-# Later you can change this to:
-#
-# on:
-#   push:
-#     branches:
-#       - main
-#
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
