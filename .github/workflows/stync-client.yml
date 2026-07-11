@@ -1,0 +1,157 @@
+name: Sync Client Repository
+
+# Run manually from the Actions tab.
+# Later you can change this to:
+#
+# on:
+#   push:
+#     branches:
+#       - main
+#
+on:
+  workflow_dispatch:
+
+jobs:
+  sync-client:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+
+      ####################################################################
+      # Step 1 - Checkout the repository where this workflow exists
+      ####################################################################
+      - name: Checkout Source Repository
+        uses: actions/checkout@v4
+
+      ####################################################################
+      # Step 2 - Configure Git
+      ####################################################################
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      ####################################################################
+      # Step 3 - Checkout the client repository
+      #
+      # Replace:
+      #   your-username
+      #   client-repo
+      #
+      # with your own values.
+      ####################################################################
+      - name: Checkout Client Repository
+        uses: actions/checkout@v4
+        with:
+          repository: your-username/client-repo
+          path: client-repo
+          token: ${{ secrets.CLIENT_REPO_TOKEN }}
+
+      ####################################################################
+      # Step 4 - Display folder structure
+      # Useful for understanding where everything is.
+      ####################################################################
+      - name: Show Workspace
+        run: |
+          echo "Current Folder"
+          pwd
+
+          echo ""
+          echo "Workspace Files"
+          ls -la
+
+          echo ""
+          echo "Client Repository"
+          ls -la client-repo
+
+      ####################################################################
+      # Step 5 - Generate branch name
+      #
+      # Example:
+      # ga/2026-07-11
+      ####################################################################
+      - name: Generate Branch Name
+        run: |
+          echo "BRANCH_NAME=ga/$(date +%F)" >> $GITHUB_ENV
+
+      ####################################################################
+      # Step 6 - Create branch
+      ####################################################################
+      - name: Create Branch
+        run: |
+          cd client-repo
+          git checkout -b "$BRANCH_NAME"
+
+      ####################################################################
+      # Step 7 - Copy latest code
+      #
+      # This copies everything except:
+      #   .git
+      #   .github
+      #
+      # Remove ".github" from exclude if you also want
+      # to sync GitHub workflows.
+      ####################################################################
+      - name: Copy Files
+        run: |
+          rsync -av --delete \
+            --exclude=".git" \
+            --exclude=".github" \
+            ./ client-repo/
+
+      ####################################################################
+      # Step 8 - Check if anything changed
+      ####################################################################
+      - name: Show Git Status
+        run: |
+          cd client-repo
+          git status
+
+      ####################################################################
+      # Step 9 - Commit only if changes exist
+      ####################################################################
+      - name: Commit Changes
+        run: |
+          cd client-repo
+
+          git add .
+
+          if git diff --cached --quiet
+          then
+            echo "No changes found."
+            echo "NO_CHANGES=true" >> $GITHUB_ENV
+          else
+            git commit -m "Sync from source repository"
+            echo "NO_CHANGES=false" >> $GITHUB_ENV
+          fi
+
+      ####################################################################
+      # Step 10 - Push branch
+      ####################################################################
+      - name: Push Branch
+        if: env.NO_CHANGES == 'false'
+        run: |
+          cd client-repo
+          git push origin "$BRANCH_NAME"
+
+      ####################################################################
+      # Step 11 - Create Pull Request
+      #
+      # GitHub CLI (gh) is already installed
+      # on ubuntu-latest runners.
+      ####################################################################
+      - name: Create Pull Request
+        if: env.NO_CHANGES == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.CLIENT_REPO_TOKEN }}
+        run: |
+          gh pr create \
+            --repo your-username/client-repo \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "Sync $(date +%F)" \
+            --body "Automatically synced from source repository."
