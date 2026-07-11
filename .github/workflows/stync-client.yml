@@ -42,7 +42,7 @@ jobs:
       - name: Checkout Client Repository
         uses: actions/checkout@v4
         with:
-          repository: your-username/client-repo
+          repository: kuldeepsaini23/palvio
           path: client-repo
           token: ${{ secrets.CLIENT_REPO_TOKEN }}
 
@@ -145,7 +145,7 @@ jobs:
           GH_TOKEN: ${{ secrets.CLIENT_REPO_TOKEN }}
         run: |
           gh pr create \
-            --repo your-username/client-repo \
+            --repo kuldeepsaini23/palvio \
             --base main \
             --head "$BRANCH_NAME" \
             --title "Sync $(date +%F)" \
