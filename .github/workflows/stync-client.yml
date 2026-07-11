@@ -71,7 +71,7 @@ jobs:
       ####################################################################
       - name: Generate Branch Name
         run: |
-          echo "BRANCH_NAME=ga/$(date +%F)" >> $GITHUB_ENV
+          echo "BRANCH_NAME=ga/$(date +%F)-${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
 
       ####################################################################
       # Step 6 - Create branch
