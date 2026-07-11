@@ -1,0 +1,162 @@
+name: Sync Palvio Client
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  CLIENT_REPO: kuldeepsaini23/palvio-client
+
+jobs:
+  sync-client:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+
+      ####################################################################
+      # Step 1 - Checkout the repository where this workflow exists
+      # fetch-depth: 0 so we can read commit history for the summary
+      ####################################################################
+      - name: Checkout Source Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      ####################################################################
+      # Step 2 - Configure Git
+      ####################################################################
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      ####################################################################
+      # Step 3 - Checkout the client repository
+      ####################################################################
+      - name: Checkout Client Repository
+        uses: actions/checkout@v4
+        with:
+          repository: kuldeepsaini23/palvio-client
+          path: client-repo
+          token: ${{ secrets.CLIENT_REPO_TOKEN }}
+
+      ####################################################################
+      # Step 4 - Build update summary from the pushed commits
+      #
+      # Written to /tmp so it never gets synced into the client repo.
+      # Used for both the PR body and the release notes.
+      ####################################################################
+      - name: Build Update Summary
+        run: |
+          BEFORE="${{ github.event.before }}"
+
+          {
+            echo "## Update Summary"
+            echo ""
+            if [ -n "$BEFORE" ] && git cat-file -e "$BEFORE" 2>/dev/null
+            then
+              git log --pretty="- %s" "$BEFORE"..${{ github.sha }}
+            else
+              git log -1 --pretty="- %s"
+            fi
+          } > /tmp/update-summary.md
+
+          cat /tmp/update-summary.md
+
+      ####################################################################
+      # Step 5 - Generate branch name (unique per run)
+      ####################################################################
+      - name: Generate Branch Name
+        run: |
+          echo "BRANCH_NAME=ga/$(date +%F)-${GITHUB_RUN_NUMBER}" >> $GITHUB_ENV
+
+      ####################################################################
+      # Step 6 - Create branch
+      ####################################################################
+      - name: Create Branch
+        run: |
+          cd client-repo
+          git checkout -b "$BRANCH_NAME"
+
+      ####################################################################
+      # Step 7 - Copy latest code
+      #
+      # Excludes:
+      #   .git        - git internals
+      #   .github     - workflows stay in the source repo
+      #   client-repo - the client checkout itself (avoid self-copy)
+      ####################################################################
+      - name: Copy Files
+        run: |
+          rsync -av --delete \
+            --exclude=".git" \
+            --exclude=".github" \
+            --exclude="client-repo" \
+            ./ client-repo/
+
+      ####################################################################
+      # Step 8 - Commit only if changes exist
+      ####################################################################
+      - name: Commit Changes
+        run: |
+          cd client-repo
+
+          git add .
+
+          if git diff --cached --quiet
+          then
+            echo "No changes found."
+            echo "NO_CHANGES=true" >> $GITHUB_ENV
+          else
+            git commit -m "Sync from source repository"
+            echo "NO_CHANGES=false" >> $GITHUB_ENV
+          fi
+
+      ####################################################################
+      # Step 9 - Push branch
+      ####################################################################
+      - name: Push Branch
+        if: env.NO_CHANGES == 'false'
+        run: |
+          cd client-repo
+          git push origin "$BRANCH_NAME"
+
+      ####################################################################
+      # Step 10 - Create Pull Request with the update summary as body
+      ####################################################################
+      - name: Create Pull Request
+        if: env.NO_CHANGES == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.CLIENT_REPO_TOKEN }}
+        run: |
+          gh pr create \
+            --repo "$CLIENT_REPO" \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "Sync $(date +%F)" \
+            --body-file /tmp/update-summary.md
+
+      ####################################################################
+      # Step 11 - Create Release on the client repo
+      #
+      # Tag format: v2026.07.11-42 (date + run number, always unique)
+      # The release notes are the same update summary.
+      ####################################################################
+      - name: Create Release
+        if: env.NO_CHANGES == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.CLIENT_REPO_TOKEN }}
+        run: |
+          TAG="v$(date +%Y.%m.%d)-${GITHUB_RUN_NUMBER}"
+
+          gh release create "$TAG" \
+            --repo "$CLIENT_REPO" \
+            --target "$BRANCH_NAME" \
+            --title "Update $(date +%F)" \
+            --notes-file /tmp/update-summary.md
