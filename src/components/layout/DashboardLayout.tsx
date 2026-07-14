@@ -51,6 +51,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
               <div>
                 <h2 className="font-semibold text-sm">{organization?.name}</h2>
+                <p>Hello</p>
                 <p className="text-xs text-muted-foreground">Status Page</p>
               </div>
             </div>
